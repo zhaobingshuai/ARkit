@@ -7,7 +7,9 @@
 //
 
 #import "ViewController.h"
+#import "Renderer.h"
 #import <ARKit/ARKit.h>
+#import <Foundation/Foundation.h>
 
 //定义π值 3.1415926，将欧拉角换算成度数
 #define PI 3.1415926
@@ -18,12 +20,14 @@
 @property (nonatomic, strong) ARSCNView *scnView;
 //AR会话，负责管理相机追踪配置及3D相机坐标
 @property (nonatomic, strong) ARSession *session;
+@property (nonatomic, strong) ARFrame *frame;
 // 会话追踪配置：负责追踪相机的运动
 @property (nonatomic, strong) ARConfiguration *sessionConfig;
 //定义旋转变换矩阵
 @property (nonatomic, readonly) matrix_float4x4 transform;
 //定义欧拉角
 @property (nonatomic, readonly) vector_float3 eulerAngles;
+@property (nonatomic, readonly) CGSize imageResolution;
 // 遮罩视图，当状态异常时充当蒙版遮罩
 @property (nonatomic, strong) UIView *maskView;
 // 提示信息标签
@@ -31,6 +35,10 @@
 // 位姿信息标签
 @property (nonatomic, strong) UILabel *infoLabel;
 
+@end
+
+@interface timer :NSObject
+@property (nonatomic,weak) NSTimer *timer;
 @end
 
 @implementation ViewController
@@ -49,7 +57,11 @@
     self.scnView.delegate = self;
     // 显示视图的FPS信息和其他参数
     self.scnView.showsStatistics = YES;
+//   初始化定时器NSTimer：每隔1秒执行一次didUpdateFrame方法，除了构造timer，还会把timer添加到当前线程的runloop，如果使用timerWithTimeInterval或initWithFireDate构造，需要手动添加到runloop上，使用scheduledTimerWithTimeInterval则不需要
+//    定时器NSTimer运行到didUpdateFrame时停下来了，提示：Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)，可能是内存泄漏，不会解决。
+    [NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(session:didUpdateFrame:) userInfo:nil repeats:YES];
 }
+
 
 - (void)viewWillAppear:(BOOL)animated
 {
@@ -62,52 +74,55 @@
 - (void)viewWillDisappear:(BOOL)animated
 {
     [super viewWillDisappear:animated];
-    
     // 暂停运行当前视图自带的session
     [self.scnView.session pause];
 }
 
-//#pragma mark ARSessionObserver
-//#pragma mark - ARSCNViewDelegate
-//#pragma mark - ARSessionDelegate
+
+#pragma mark ARSessionObserver
+#pragma mark - ARSCNViewDelegate
+#pragma mark - ARSessionDelegate
 
 //push。 实时不断的获取相机位置，由ARSession主动告知用户。通过实现ARSession的代理来获取
 //会话位置更新（监听相机的移动），此代理方法会调用非常频繁，只要相机移动就会调用，如果相机移动过快，会有一定的误差，具体的需要强大的算法去优化
 //问题：调用非常频繁，一秒钟几十次更新，很多是重复的数据，导致手机卡到无法更新摄像头拍摄到的画面，而且程序运行结束后需要重启手机才能进行下一次测试，请问如何改进呢？
-- (void) session:(ARSession *)session didUpdateFrame:(ARFrame *)frame {
+- (void) session:(ARSession *)session didUpdateFrame:(ARFrame *)frame
+{
     int count = 1;  //count用来统计数据的组数，用于后续分析
     //只有当追踪正常状态时才输出当前帧的旋转矩阵和欧拉角，其他状态下是无意义的数据
     while(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)
     {
-    // 实时不断的取出会话输出的帧
-    matrix_float4x4 transform = self.scnView.session.currentFrame.camera.transform;
-    vector_float3 eulerAngles = self.scnView.session.currentFrame.camera.eulerAngles;
-    NSMutableString *infoStr = [NSMutableString new];
+        // 实时不断的取出会话输出的帧
+            matrix_float4x4 transform = self.scnView.session.currentFrame.camera.transform;
+            vector_float3 eulerAngles = self.scnView.session.currentFrame.camera.eulerAngles;
+            CGSize imageResolution = self.scnView.session.currentFrame.camera.imageResolution; //图像的分辨率
+            NSLog(@"分辨率：%f*%f",imageResolution.width,imageResolution.height);
+        //    NSMutableString *infoStr = [NSMutableString new];
 
-    // 输出位姿信息，即transform 4*4的矩阵
-    NSLog(@"第%d次更新：",count);  //记录帧的顺序，便于数据分析
-    count = count + 1;
-    for (int i=0; i<4; i++)
-    {
-        //    在手机屏幕上显示位姿态信息  相机的位置参数在4*4矩阵的第三列
-        [infoStr appendString:[NSString stringWithFormat:@"位姿%d:%f, %f, %f, %f\n",
-                               i+1,
-                               transform.columns[i].x,transform.columns[i].y,
-                               transform.columns[i].z,transform.columns[i].w]];
-        self.infoLabel.text = infoStr;
-        //    在IDE的target output中输出位姿信息
-        NSLog(@"位姿%d: %f, %f, %f, %f",
-              i+1,
-              transform.columns[i].x,transform.columns[i].y,
-              transform.columns[i].z,transform.columns[i].w);
-    }
-//    X轴的旋转角称为俯仰角，Y轴的旋转角称为航向角，Z轴的旋转角称为横滚角，欧拉角表示摄像头的角度
-    [infoStr appendString:[NSString stringWithFormat:@"欧拉角：%f, %f, %f",
-                           eulerAngles.x,eulerAngles.y,eulerAngles.z]];
-    self.infoLabel.text = infoStr;
-    NSLog(@"欧拉角：%f°, %f°, %f°\n",
-          (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360); //将欧拉角换算为对应的角度显示
-    }
+            // 输出位姿信息，即transform 4*4的矩阵
+            NSLog(@"第%d次更新：",count);  //记录帧的顺序，便于数据分析
+            count = count + 1;
+            for (int i=0; i<4; i++)
+            {
+                //    在手机屏幕上显示位姿态信息  相机的位置参数在4*4矩阵的第三列
+        //        [infoStr appendString:[NSString stringWithFormat:@"位姿%d:%f, %f, %f, %f\n",
+        //                               i+1,
+        //                               transform.columns[i].x,transform.columns[i].y,
+        //                               transform.columns[i].z,transform.columns[i].w]];
+        //        self.infoLabel.text = infoStr;
+                //    在IDE的target output中输出位姿信息
+                NSLog(@"位姿%d: %f, %f, %f, %f",
+                      i+1,
+                      transform.columns[i].x,transform.columns[i].y,
+                      transform.columns[i].z,transform.columns[i].w);
+            }
+        //    X轴的旋转角称为俯仰角，Y轴的旋转角称为航向角，Z轴的旋转角称为横滚角，欧拉角表示摄像头的角度
+        //    [infoStr appendString:[NSString stringWithFormat:@"欧拉角：%f, %f, %f",
+        //                           eulerAngles.x,eulerAngles.y,eulerAngles.z]];
+        //    self.infoLabel.text = infoStr;
+            NSLog(@"欧拉角：%f°, %f°, %f°\n",
+                  (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360); //将欧拉角换算为对应的角度显示
+        }
 }
 
 
