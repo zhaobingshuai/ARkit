@@ -56,12 +56,48 @@ int count = 1;  //count用来统计数据的组数，用于后续分析
     self.scnView.showsStatistics = YES;
     trackingQueue = dispatch_queue_create("tracking", DISPATCH_QUEUE_SERIAL);
 }
+- (IBAction)Begin:(id)sender {
+    ViewController *vc = [[ViewController alloc]init];
+    [self presentViewController:vc animated:YES completion:nil];//使用present的方式，从一个控制器跳转到另一个控制器
+    
+    [self.Begin addTarget:self action:@selector(Begin:) forControlEvents:UIControlEventTouchUpInside];
+    //这个是设置按钮的背景色
+    self.Begin.backgroundColor = [UIColor colorWithRed:1.00f green:0.0f blue:0.82f alpha:1.00f];
+    
+    //这个是设置按钮上文字的颜色
+    [self.Begin setTitleColor:[UIColor colorWithRed:0.00f green:1.0f blue:0.02f alpha:1.00f] forState:UIControlStateNormal];
+    //这个是设置按钮上文字的大小
+    self.Begin.font = [UIFont boldSystemFontOfSize:12.0f];
+    
+    //这个是设置按钮变成圆角
+    self.Begin.layer.cornerRadius = 10;
+    //这个是设置按钮边框的大小
+    self.Begin.layer.borderWidth = 3;
+    CGRect btnFrame = self.Begin.frame;
+    btnFrame.size.width = 100;
+    btnFrame.size.height = 100;
+    self.Begin.frame = btnFrame;
+}
+
+
+- (void)back:(UIButton *)btn
+{
+    [self dismissViewControllerAnimated:YES completion:nil];//假设从A控制器通过present的方式跳转到了B控制器，dismiss回到A控制器
+}
 
 - (void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
     // 运行视图中自带的会话，ARSession运行后会启动一个名为VIOEngineNode的线程，然后初始化传感器、调用ARTechnique的各个子类
     [self.scnView.session runWithConfiguration:self.sessionConfig];
+    
+    // 添加返回按钮
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [btn setTitle:@"停止" forState:UIControlStateNormal];
+    btn.frame = CGRectMake(self.view.bounds.size.width / 2 - 50, self.view.bounds.size.height - 250, 100, 50);//控制按钮的左右位置，上下位置以及按钮大小
+    btn.backgroundColor = [UIColor redColor];//设置按钮颜色为红色
+    [btn addTarget:self action:@selector(back:) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:btn];
 }
 
 - (void)viewWillDisappear:(BOOL)animated
@@ -106,17 +142,17 @@ int count = 1;  //count用来统计数据的组数，用于后续分析
         //找到并定位到fileHandle的末尾位置(在此后追加文件)
         [fileHandle seekToEndOfFile];
         
-        NSString *stringCount = [NSString stringWithFormat:@"第%d次更新：\n",count];
+        NSString *stringCount = [NSString stringWithFormat:@"%d ",count];
         NSData *dataCount = [stringCount dataUsingEncoding:NSUTF8StringEncoding];
         [fileHandle writeData:dataCount];
 
-        NSString *stringPose = [NSString stringWithFormat:@"东西：%fcm, 上下：%fcm, 南北：%fcm\n",
+        NSString *stringPose = [NSString stringWithFormat:@"%f %f %f ",
                                 transform.columns[3].x*100,transform.columns[3].y*100,
                                 transform.columns[3].z*100];
         NSData *dataPose = [stringPose dataUsingEncoding:NSUTF8StringEncoding];
         [fileHandle writeData:dataPose];
 
-        NSString *stringEulerAngles = [NSString stringWithFormat:@"俯仰角：%f°, 航向：%f°, 横滚：%f°\n\n",
+        NSString *stringEulerAngles = [NSString stringWithFormat:@"%f %f %f\n",
                                        (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360];
         NSData *dataEulerAngles = [stringEulerAngles dataUsingEncoding:NSUTF8StringEncoding];
         [fileHandle writeData:dataEulerAngles];
@@ -151,12 +187,12 @@ int count = 1;  //count用来统计数据的组数，用于后续分析
                 [infoStr appendString:[NSString stringWithFormat:@"第%d次更新：\n",count]];
                 self.infoLabel.text = infoStr;
             
-                [infoStr appendString:[NSString stringWithFormat:@"东西：%fcm, 上下：%fcm, 南北：%fcm\n",
+                [infoStr appendString:[NSString stringWithFormat:@"东西：%fcm\n上下：%fcm\n南北：%fcm\n",
                                        transform.columns[3].x*100,transform.columns[3].y*100,
                                        transform.columns[3].z*100]];
                 self.infoLabel.text = infoStr;
                 
-                [infoStr appendString:[NSString stringWithFormat:@"俯仰角：%f°, 航向：%f°, 横滚：%f°\n\n",
+                [infoStr appendString:[NSString stringWithFormat:@"俯仰角：%f°\n航向角：%f°\n横滚角：%f°\n\n",
                                        (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360]];
                 self.infoLabel.text = infoStr;
             }
@@ -386,5 +422,10 @@ int count = 1;  //count用来统计数据的组数，用于后续分析
 }
 
 - (IBAction)EndARKit:(id)sender {
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
 }
 @end
