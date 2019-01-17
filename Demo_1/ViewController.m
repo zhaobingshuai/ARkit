@@ -27,8 +27,6 @@
 @property (nonatomic, readonly) matrix_float4x4 transform;
 //定义欧拉角
 @property (nonatomic, readonly) vector_float3 eulerAngles;
-//定义摄像头拍摄到的图像分辨率
-@property (nonatomic, readonly) CGSize imageResolution;
 // 遮罩视图，当状态异常时充当蒙版遮罩
 @property (nonatomic, strong) UIView *maskView;
 // 提示信息标签
@@ -83,95 +81,88 @@ int count = 1;  //count用来统计数据的组数，用于后续分析
 {
     matrix_float4x4 transform = self.scnView.session.currentFrame.camera.transform;
     vector_float3 eulerAngles = self.scnView.session.currentFrame.camera.eulerAngles;
-    CGSize imageResolution = self.scnView.session.currentFrame.camera.imageResolution;
     
     //      filepath为创建文件的路径
     NSString *filepath =  [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/SlamData.txt"];
     //      NSFileManager 是一个专门用来管理文件和文件夹的类，创建文件管理器对象
     NSFileManager *fm = [NSFileManager defaultManager];
-    //      创建文件
-    [fm createFileAtPath:filepath contents:nil attributes:nil];
-    //判断文件是否存在 不存在就结束程序
-    if(![[NSFileManager defaultManager] fileExistsAtPath:filepath])
+    if(count == 1)//只在第一次调用didUpdateFrame时创建文件，否则每次调用都会创建新文件覆盖掉原数据
     {
-        NSLog(@"文件不存在");
+        //创建文件
+        [fm createFileAtPath:filepath contents:nil attributes:nil];
+        //判断文件是否存在 不存在就结束程序
+        if(![[NSFileManager defaultManager] fileExistsAtPath:filepath])
+        {
+            NSLog(@"文件不存在");
+        }
     }
-    // 向文件中写内容，通过文件句柄，NSFileHandle实现
-    NSFileHandle *fileHandle = [NSFileHandle fileHandleForUpdatingAtPath:filepath];
 
-////以下注释部分为新建文本文件用于保存位姿数据，如果不注释掉的话则dispatch_async(dispatch_get_main_queue()部分画面更新位姿数据的功能失效，不明白原因。
-////如果注释掉dispatch_async(dispatch_get_main_queue()部分，则文件保存正常，如何二者兼得呢？
-////根据对位姿态数据的观察，认为显示出来的数据有误，不管如何改变手机姿态，实际显示的位姿变化微小。
-//    while(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)
-//    {
-//        NSString *stringCount = [NSString stringWithFormat:@"第%d次更新：\n",count];
-//        NSData *dataCount = [stringCount dataUsingEncoding:NSUTF8StringEncoding];
-//        [fileHandle writeData:dataCount];
-//
-//        NSString *stringResolution = [NSString stringWithFormat:@"分辨率：%f*%f\n",imageResolution.width,imageResolution.height];
-//        NSData *dataResolution = [stringResolution dataUsingEncoding:NSUTF8StringEncoding];
-//        [fileHandle writeData:dataResolution];
-//
-//        NSString *stringPose = [NSString stringWithFormat:@"位置: %f, %f, %f\n",
-//                                transform.columns[2].x,transform.columns[2].y,
-//                                transform.columns[2].z];
-//        NSData *dataPose = [stringPose dataUsingEncoding:NSUTF8StringEncoding];
-//        [fileHandle writeData:dataPose];
-//
-//        NSString *stringEulerAngles = [NSString stringWithFormat:@"欧拉角：%f°, %f°, %f°\n\n",
-//                                       (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360];
-//        NSData *dataEulerAngles = [stringEulerAngles dataUsingEncoding:NSUTF8StringEncoding];
-//        [fileHandle writeData:dataEulerAngles];
-//
-//        [NSThread sleepForTimeInterval:1.0];   //当前线程,每循环一次,就休眠一秒
-//    }
+    //新建文本文件用于保存位姿数据
+    if(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)
+    {
+        // 向文件中写内容，通过文件句柄，NSFileHandle实现
+        NSFileHandle *fileHandle = [NSFileHandle fileHandleForUpdatingAtPath:filepath];
+        
+        //找到并定位到fileHandle的末尾位置(在此后追加文件)
+        [fileHandle seekToEndOfFile];
+        
+        NSString *stringCount = [NSString stringWithFormat:@"第%d次更新：\n",count];
+        NSData *dataCount = [stringCount dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:dataCount];
+
+        NSString *stringPose = [NSString stringWithFormat:@"东西：%fcm, 上下：%fcm, 南北：%fcm\n",
+                                transform.columns[3].x*100,transform.columns[3].y*100,
+                                transform.columns[3].z*100];
+        NSData *dataPose = [stringPose dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:dataPose];
+
+        NSString *stringEulerAngles = [NSString stringWithFormat:@"俯仰角：%f°, 航向：%f°, 横滚：%f°\n\n",
+                                       (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360];
+        NSData *dataEulerAngles = [stringEulerAngles dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:dataEulerAngles];
+
+        [NSThread sleepForTimeInterval:0.01];   //当前线程,每循环一次,就休眠一秒
+        
+        [fileHandle closeFile];  // 关闭文件
+    }
 
     dispatch_async(trackingQueue, ^{
-        while(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)//这个及以下的while语句不必要，但是不清楚为什么去掉会出错？
+        if(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)
         {
             // 输出位姿信息，即transform 4*4的矩阵
             NSLog(@"第%d次更新：",count);  //记录帧的顺序，便于数据分析
-            NSLog(@"分辨率：%f*%f",imageResolution.width,imageResolution.height);
             //相机的位置参数在4*4矩阵的第三列
-            NSLog(@"位置: %f, %f, %f",
-                  transform.columns[2].x,transform.columns[2].y,
-                  transform.columns[2].z);
+            NSLog(@"东西：%fcm, 上下：%fcm, 南北：%fcm",
+                  transform.columns[3].x*100,transform.columns[3].y*100,
+                  transform.columns[3].z*100);
             //X轴的旋转角称为俯仰角，Y轴的旋转角称为航向角，Z轴的旋转角称为横滚角，欧拉角表示摄像头的角度
-            NSLog(@"欧拉角：%f°, %f°, %f°\n",
+            NSLog(@"俯仰角：%f°, 航向：%f°, 横滚：%f°\n",
                   (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360); //将欧拉角换算为对应的角度显示
             
             count = count + 1;
-            if(count > 100) break;
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
-            while(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)
+            if(self.scnView.session.currentFrame.camera.trackingState == ARTrackingStateNormal)
             {
                 // 更新界面
                 NSMutableString *infoStr = [NSMutableString new];
                 
                 [infoStr appendString:[NSString stringWithFormat:@"第%d次更新：\n",count]];
                 self.infoLabel.text = infoStr;
-                
-                [infoStr appendString:[NSString stringWithFormat:@"分辨率：%f*%f\n",imageResolution.width,imageResolution.height]];
+            
+                [infoStr appendString:[NSString stringWithFormat:@"东西：%fcm, 上下：%fcm, 南北：%fcm\n",
+                                       transform.columns[3].x*100,transform.columns[3].y*100,
+                                       transform.columns[3].z*100]];
                 self.infoLabel.text = infoStr;
                 
-                [infoStr appendString:[NSString stringWithFormat:@"位置:%f, %f, %f\n",
-                                       transform.columns[2].x,transform.columns[2].y,
-                                       transform.columns[2].z]];
-                self.infoLabel.text = infoStr;
-                
-                [infoStr appendString:[NSString stringWithFormat:@"欧拉角：%f°, %f°, %f°\n\n",
+                [infoStr appendString:[NSString stringWithFormat:@"俯仰角：%f°, 航向：%f°, 横滚：%f°\n\n",
                                        (eulerAngles.x/PI)*360,(eulerAngles.y/PI)*360,(eulerAngles.z/PI)*360]];
                 self.infoLabel.text = infoStr;
-                
-                if(count > 1) break;
             }
         });
-        [NSThread sleepForTimeInterval:1.0];   //当前线程,每循环一次,就休眠一秒
+        [NSThread sleepForTimeInterval:0.01];   //当前线程,每循环一次,就休眠一秒
     });
-    
-    [fileHandle closeFile];  // 关闭文件
 }
 
 
