@@ -93,12 +93,23 @@ UInt64 BeginTime;//定义为启动APP那一刻的时间
     [self.scnView.session pause];
 }
 
-
 - (void) session:(ARSession *)session didUpdateFrame:(ARFrame *)frame
 {
     matrix_float4x4 transform = self.scnView.session.currentFrame.camera.transform;
     vector_float3 eulerAngles = self.scnView.session.currentFrame.camera.eulerAngles;
     UInt64 CurrentTime = self.scnView.session.currentFrame.timestamp*1000;//定义为当前帧对应的时间戳，单位为秒，乘1000后单位为毫秒
+
+    NSDate *datenow = [NSDate date];//系统自带的格式，只显示到秒;时区为：通用协调时(UTC, Universal Time Coordinated)
+    //设置时区,这个对于时间的处理有时很重要
+    NSTimeZone* timeZone = [NSTimeZone timeZoneWithName:@"Asia/Shanghai"];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+//    [formatter setDateStyle:NSDateFormatterMediumStyle];
+//    [formatter setTimeStyle:NSDateFormatterShortStyle];
+    [formatter setDateFormat:@"YYYY-MM-dd-HH-mm-ss-SSS"]; //设置你想要的格式,hh与HH的区别:分别表示12小时制,24小时制
+    [formatter setTimeZone:timeZone];
+    NSString *timeString = [formatter stringFromDate:datenow];
+//    NSString *timeString = [NSString stringWithFormat:@"%ld", (long)[datenow timeIntervalSince1970]*1000];
+    [[formatter dateFromString:timeString]timeIntervalSince1970];
     
     //      filepath为创建文件的路径
     NSString *filepath =  [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/SlamData.txt"];
@@ -130,6 +141,11 @@ UInt64 BeginTime;//定义为启动APP那一刻的时间
         NSData *dataCount = [stringCount dataUsingEncoding:NSUTF8StringEncoding];
         [fileHandle writeData:dataCount];
         
+        //手机的当前时间
+        NSString *stringTimestamp = [NSString stringWithFormat:@"%@ ",timeString];
+        NSData *dataTimestamp = [stringTimestamp dataUsingEncoding:NSUTF8StringEncoding];
+        [fileHandle writeData:dataTimestamp];
+        
         //当前帧的时间减去开始APP那一刻的时间，就可以使时间从0开始以毫秒计
         NSString *stringTime = [NSString stringWithFormat:@"%llu ",CurrentTime - BeginTime];
         NSData *dataTime = [stringTime dataUsingEncoding:NSUTF8StringEncoding];
@@ -156,9 +172,10 @@ UInt64 BeginTime;//定义为启动APP那一刻的时间
         {
             // 输出位姿信息，即transform 4*4的矩阵
             NSLog(@"第%d帧：",count);  //记录帧的顺序，便于数据分析
-            
             NSLog(@"时间戳:%llu ms", CurrentTime - BeginTime);
-            
+//            NSLog(@"BeginTime:%llu ms", BeginTime);
+//            NSLog(@"CurrentTime:%llu ms", CurrentTime);
+            NSLog(@"当前时间:%@",timeString);
             //相机的位置参数在4*4矩阵的第三列
             NSLog(@"东西：%f cm, 上下：%f cm, 南北：%f cm",
                   transform.columns[3].x*100,transform.columns[3].y*100,
@@ -178,6 +195,9 @@ UInt64 BeginTime;//定义为启动APP那一刻的时间
                 NSMutableString *infoStr = [NSMutableString new];
                 
                 [infoStr appendString:[NSString stringWithFormat:@"第%d帧：\n",count]];
+                self.infoLabel.text = infoStr;
+                
+                [infoStr appendString:[NSString stringWithFormat:@"当前时间：%@\n",timeString]];
                 self.infoLabel.text = infoStr;
                 
                 [infoStr appendString:[NSString stringWithFormat:@"时间戳：%llu ms\n",CurrentTime - BeginTime]];
